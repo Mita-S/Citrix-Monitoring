@@ -1,0 +1,64 @@
+{
+  "Citrix": {
+    "ApiBase": "https://api.cloud.com",
+    "CustomerId": "yourcustomerid",
+    "SiteId": "",
+    "ClientSecretArn": "arn:aws:secretsmanager:us-east-1:111122223333:secret:citrix-mon-api-client",
+    "StatusFeedUrl": "https://status.cloud.com/history.rss",
+    "ConnectorStatusUri": "",
+    "ConnectivityEndpoints": [
+      "api.cloud.com:443",
+      "citrixworkspacesapi.net:443",
+      "agenthub.citrixworkspacesapi.net:443",
+      "citrixnetworkapi.net:443"
+    ]
+  },
+  "Sql": {
+    "ConnectionString": "Server=citrixmon.xxxxxx.us-east-1.rds.amazonaws.com;Database=CitrixMon;Encrypt=True;TrustServerCertificate=False",
+    "CredentialSecretArn": "arn:aws:secretsmanager:us-east-1:111122223333:secret:citrix-mon-sql"
+  },
+  "Aws": {
+    "Region": "us-east-1",
+    "CitrixTagKey": "CitrixRole",
+    "AutoScalingGroups": [],
+    "NatGatewayIds": []
+  },
+  "ResourceLocations": [
+    {
+      "Name": "AWS-USE1",
+      "MinHealthyConnectors": 2,
+      "Connectors": [ "CC01.corp.example.com", "CC02.corp.example.com" ]
+    }
+  ],
+  "FAS": {
+    "Servers": [ "FAS01.corp.example.com", "FAS02.corp.example.com" ],
+    "CertificateAuthorities": [ "ca01.corp.example.com\\Corp-Issuing-CA" ],
+    "IssuedEventIds": [],
+    "FailedEventIds": []
+  },
+  "AppV": {
+    "ManagementUrl": "https://appvmgmt.corp.example.com/",
+    "PublishingUrl": "https://appvpub.corp.example.com:8443/",
+    "Servers": [ "APPV01.corp.example.com" ],
+    "Packages": [ "SAP GUI" ]
+  },
+  "DeliveryGroups": [
+    { "Name": "Finance-Apps", "MaxSessionsPerVda": 20, "AutoscaleMaxMachines": 40, "IsCritical": true },
+    { "Name": "General-Apps", "MaxSessionsPerVda": 25, "AutoscaleMaxMachines": 60, "IsCritical": false }
+  ],
+  "DefaultMaxSessionsPerVda": 20,
+  "InternalClientCidrs": [ "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16" ],
+  "Synthetic": {
+    "ProbeName": "internal-aws-use1",
+    "Path": "Internal",
+    "WorkspaceUrl": "https://yourtenant.cloud.com",
+    "ResultsIngest": "Sql",
+    "ExternalResultFolder": "C:\\CitrixMon\\synthetic-inbox"
+  },
+  "Notifications": {
+    "TeamsWebhookSecretArn": "arn:aws:secretsmanager:us-east-1:111122223333:secret:citrix-mon-teams",
+    "PagerDutyRoutingKeySecretArn": "arn:aws:secretsmanager:us-east-1:111122223333:secret:citrix-mon-pagerduty",
+    "DashboardUrl": "https://app.powerbi.com/groups/xxx/reports/yyy"
+  },
+  "BusinessHours": { "TimeZone": "Eastern Standard Time", "Start": 7, "End": 19, "Days": [1,2,3,4,5] }
+}

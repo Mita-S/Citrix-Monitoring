@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Citrix Service Health</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: an operations wall board. Status first (banner + tiles), detail on demand (drawer), one plane, hairline structure. */
+:root {
+  color-scheme: light;
+  --bg: #f4f5f6;           /* page plane */
+  --surface: #fcfcfb;      /* cards & charts */
+  --ink: #0f1419;
+  --ink-2: #4c5560;
+  --muted: #7d858f;
+  --line: #e2e4e7;
+  --axis: #c4c8cd;
+  --accent: #1d5fae;       /* interactive: tabs, links, focus */
+  --accent-wash: rgba(29,95,174,0.08);
+  --font-display: "IBM Plex Sans Condensed", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --none: #b9bec4;
+  --good-ink: #0a6e0a; --warn-ink: #8a5a00; --crit-ink: #b02a2a;
+  --good-wash: rgba(12,163,12,0.10); --warn-wash: rgba(250,178,25,0.16); --crit-wash: rgba(208,59,59,0.10);
+
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+  --shadow: 0 1px 2px rgba(15,20,25,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1012; --surface: #181a1d; --ink: #eef0f2; --ink-2: #b9c0c8; --muted: #8a919a;
+    --line: #2a2d31; --axis: #3a3e43; --accent: #6da7ec; --accent-wash: rgba(109,167,236,0.12);
+    --good-ink: #3ccf3c; --warn-ink: #fab219; --crit-ink: #f07272;
+    --good-wash: rgba(12,163,12,0.16); --warn-wash: rgba(250,178,25,0.14); --crit-wash: rgba(208,59,59,0.20);
+    --none: #4a4f55;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1012; --surface: #181a1d; --ink: #eef0f2; --ink-2: #b9c0c8; --muted: #8a919a;
+  --line: #2a2d31; --axis: #3a3e43; --accent: #6da7ec; --accent-wash: rgba(109,167,236,0.12);
+  --good-ink: #3ccf3c; --warn-ink: #fab219; --crit-ink: #f07272;
+  --good-wash: rgba(12,163,12,0.16); --warn-wash: rgba(250,178,25,0.14); --crit-wash: rgba(208,59,59,0.20);
+  --none: #4a4f55;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body); -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 20px 48px; }
+@media (max-width: 480px) { .wrap { padding: 0 16px 40px; } }
+
+/* Header */
+header.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 18px 0 14px; }
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.brand h1 { font-size: 22px; letter-spacing: 0.01em; }
+.sample { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); border: 1px dashed var(--axis); padding: 2px 8px; border-radius: 4px; }
+.scenario { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scenario label { font-size: 12px; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 2px; }
+.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
+.seg button:hover { color: var(--ink); }
+
+nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; overflow-x: auto; }
+nav.tabs a { text-decoration: none; color: var(--ink-2); padding: 10px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; font-weight: 500; }
+nav.tabs a:hover { color: var(--ink); }
+nav.tabs a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Banner */
+.banner { display: grid; grid-template-columns: auto 1fr auto; gap: 16px 20px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--state); border-radius: 10px; padding: 16px 20px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.banner .lamp { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-size: 20px; font-weight: 600; color: var(--state-ink); }
+.banner .lamp svg { width: 30px; height: 30px; }
+.banner p { margin: 0; font-size: 16px; max-width: 70ch; }
+.banner .meta { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); justify-content: flex-end; }
+.banner .meta b { color: var(--ink); font-weight: 600; }
+@media (max-width: 760px) { .banner { grid-template-columns: 1fr; } .banner .meta { justify-content: flex-start; } }
+
+/* KPI tiles */
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.tile { position: relative; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 10px 16px; cursor: pointer; display: grid; gap: 4px; box-shadow: var(--shadow); overflow: hidden; }
+.tile::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--state); }
+.tile:hover { border-color: var(--accent); }
+.tile .lbl { font-size: 12.5px; color: var(--ink-2); display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.tile .val { font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1.1; }
+.tile .val small { font-size: 15px; font-weight: 500; color: var(--ink-2); margin-left: 2px; }
+.tile .sub { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.tile svg.spark { width: 100%; height: 26px; display: block; }
+
+/* Status pill */
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 8px 2px 6px; border-radius: 999px; background: var(--wash); color: var(--sink); white-space: nowrap; }
+.pill svg { width: 13px; height: 13px; }
+.s-good { --state: var(--good); --state-ink: var(--good-ink); --wash: var(--good-wash); --sink: var(--good-ink); }
+.s-warn { --state: var(--warn); --state-ink: var(--warn-ink); --wash: var(--warn-wash); --sink: var(--warn-ink); }
+.s-crit { --state: var(--crit); --state-ink: var(--crit-ink); --wash: var(--crit-wash); --sink: var(--crit-ink); }
+.s-none { --state: var(--none); --state-ink: var(--muted); --wash: transparent; --sink: var(--muted); }
+
+.owner { font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+
+/* Grid of cards */
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+.grid2.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 1000px) { .grid2, .grid2.even { grid-template-columns: minmax(0, 1fr); } .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .grid4 { grid-template-columns: minmax(0, 1fr); } }
+.stack { display: grid; gap: 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; box-shadow: var(--shadow); min-width: 0; }
+.card-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.card-h h2 { font-size: 16px; }
+.card-h .sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.ghost { border: 1px solid var(--line); background: none; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; color: var(--ink-2); white-space: nowrap; }
+.ghost:hover { border-color: var(--accent); color: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin: -2px 0 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; background: var(--c); display: inline-block; }
+.legend i.dash { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+.legend i.sq { width: 10px; height: 10px; border-radius: 2px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; overflow: visible; }
+
+/* Tables */
+.tscroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--accent-wash); }
+tr.click:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sev { display: inline-block; width: 4px; height: 26px; border-radius: 2px; background: var(--state); vertical-align: middle; }
+.dt-table td, .dt-table th { padding: 5px 8px; font-size: 12px; }
+
+/* Status strip (24 h) */
+.strip { display: grid; grid-template-columns: repeat(24, minmax(4px, 1fr)); gap: 2px; min-width: 120px; }
+.strip i { height: 14px; border-radius: 2px; background: var(--state); }
+.strip i.s-none { background: var(--none); }
+
+/* Bars in tables */
+.bar { position: relative; height: 8px; background: var(--line); border-radius: 4px; min-width: 60px; }
+.bar b { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--c, var(--s1)); }
+
+.empty { padding: 18px 4px; color: var(--ink-2); display: flex; gap: 10px; align-items: center; }
+.empty svg { width: 22px; height: 22px; color: var(--good); flex: none; }
+.note { font-size: 12.5px; color: var(--muted); margin-top: 18px; max-width: 90ch; }
+
+.capnums { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.capnums div { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; }
+.capnums .k { font-size: 12px; color: var(--muted); }
+.capnums .v { font-family: var(--font-display); font-size: 24px; font-weight: 600; }
+.rec { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 8px; background: var(--wash); border: 1px solid var(--line); }
+.rec svg { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--sink); }
+
+/* Tooltip */
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.14); min-width: 140px; display: none; }
+#tip .t { font-weight: 600; margin-bottom: 4px; }
+#tip .row { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
+#tip .row span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+#tip .row i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); display: inline-block; }
+#tip .row b { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* Drawer */
+.scrim { position: fixed; inset: 0; background: rgba(10,12,14,0.35); z-index: 40; display: none; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 100%); background: var(--surface); border-left: 1px solid var(--line); z-index: 41; transform: translateX(100%); transition: transform 0.18s ease; overflow-y: auto; padding: 20px 22px 32px; }
+.drawer.open { transform: none; }
+.drawer .x { position: absolute; top: 14px; right: 14px; }
+.drawer h3 { font-size: 20px; padding-right: 60px; margin-bottom: 6px; }
+.drawer h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 20px 0 8px; font-weight: 600; }
+.drawer p { margin: 0 0 8px; }
+.drawer dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+.drawer dt { color: var(--muted); }
+.drawer dd { margin: 0; }
+.trace { display: grid; gap: 6px; }
+.trace div { display: grid; grid-template-columns: 64px 1fr; gap: 10px; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.trace code { font-weight: 600; color: var(--accent); font-family: var(--font-body); }
+@media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
+
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Citrix Service Health</h1>
+      <span class="sample">Sample data · demo</span>
+    </div>
+    <div class="scenario">
+      <label id="sc-l">Sample scenario</label>
+      <div class="seg" role="group" aria-labelledby="sc-l" id="scenario">
+        <button type="button" id="sc-green" data-sc="green" aria-pressed="false">Normal</button>
+        <button type="button" id="sc-yellow" data-sc="yellow" aria-pressed="true">Degraded</button>
+        <button type="button" id="sc-red" data-sc="red" aria-pressed="false">Outage</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Dashboard views">
+    <a href="#overview" data-view="overview">Overview</a>
+    <a href="#trends" data-view="trends">Trends</a>
+    <a href="#applications" data-view="applications">Applications</a>
+    <a href="#capacity" data-view="capacity">Capacity &amp; forecast</a>
+  </nav>
+
+  <section class="banner" id="banner" aria-live="polite"></section>
+
+  <!-- OVERVIEW -->
+  <main id="v-overview" data-v="overview">
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><div><h2>Component health</h2><div class="sub">Who owns it, its status now, and the last 24 hours. Select a row for detail.</div></div></div>
+        <div class="tscroll"><table id="matrix"></table></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><div><h2>Top issues</h2><div class="sub">Open alerts, most severe first. Select one for the runbook.</div></div></div>
+        <div id="issues"></div>
+      </div>
+    </div>
+    <p class="note">Refreshed hourly (critical checks every 5 minutes). Every tile traces to technical metric IDs (UX-, VDA-, CN-, FAS-, CC-, AWS-) in the monitoring design document. Select a tile to see which ones. All figures on this page are sample data.</p>
+  </main>
+
+  <!-- TRENDS -->
+  <main id="v-trends" data-v="trends" hidden>
+    <div class="stack">
+      <div class="grid2 even">
+        <div class="card" id="c-users"></div>
+        <div class="card" id="c-logon"></div>
+      </div>
+      <div class="grid2 even">
+        <div class="card" id="c-fail"></div>
+        <div class="card" id="c-phases"></div>
+      </div>
+      <div class="grid2 even">
+        <div class="card" id="c-launch"></div>
+        <div class="card" id="c-path"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><div><h2>VDA fleet resources</h2><div class="sub">Hourly, across all powered-on VDAs. Dashed line = warning threshold.</div></div></div>
+        <div class="grid4" id="c-vda"></div>
+      </div>
+      <div class="card" id="c-conn"></div>
+    </div>
+  </main>
+
+  <!-- APPLICATIONS -->
+  <main id="v-applications" data-v="applications" hidden>
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><div><h2>Top published applications by usage</h2><div class="sub">Last complete hour. Launch success counts launches that neither failed nor crashed.</div></div></div>
+        <div class="tscroll"><table id="apps"></table></div>
+      </div>
+      <div class="grid2 even">
+        <div class="card"><div class="card-h"><div><h2>Highest failure rate</h2><div class="sub">Apps with at least 20 launches in the hour</div></div></div><div id="appfail"></div></div>
+        <div class="card"><div class="card-h"><div><h2>Slowest launch (P90)</h2><div class="sub">Seconds from click to app ready</div></div></div><div id="appslow"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><div><h2>Delivery groups</h2><div class="sub">Groups with any yellow or red user-experience signal are listed first</div></div></div>
+        <div class="tscroll"><table id="dgs"></table></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- CAPACITY -->
+  <main id="v-capacity" data-v="capacity" hidden>
+    <div class="grid2">
+      <div class="card" id="c-forecast"></div>
+      <div class="card">
+        <div class="card-h"><div><h2>Capacity now</h2><div class="sub">Usable = registered, powered on, not in maintenance</div></div></div>
+        <div class="capnums" id="capnums"></div>
+        <div id="caprec"></div>
+        <h2 style="font-size:15px;margin:18px 0 8px">Utilization by delivery group</h2>
+        <div id="capdg"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="tip" role="presentation"></div>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title" tabindex="-1">
+  <button type="button" class="ghost x" id="dr-close">Close</button>
+  <div id="dr-body"></div>
+</aside>
+
+<script>
+(function () {
+"use strict";
+
+/* ---------------- Utilities ---------------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtInt = v => v == null ? "–" : Math.round(v).toLocaleString("en-US");
+const fmt1 = v => v == null ? "–" : (Math.round(v * 10) / 10).toFixed(1);
+const fmtPct = v => v == null ? "–" : fmt1(v) + "%";
+const fmtSec = v => v == null ? "–" : Math.round(v) + " s";
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+const ICON = {
+  good: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" opacity=".18"/><path d="M4.6 8.3l2.2 2.2 4.6-4.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  warn: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6l6.8 12H1.2z" fill="currentColor" opacity=".22" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 6v3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="11.6" r="1" fill="currentColor"/></svg>',
+  crit: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.1 1h5.8L15 5.1v5.8L10.9 15H5.1L1 10.9V5.1z" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/><path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  none: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 8h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  info: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" opacity=".18"/><path d="M8 7v4.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="4.8" r="1" fill="currentColor"/></svg>'
+};
+const WORD = { good: "Healthy", warn: "Warning", crit: "Critical", none: "No data" };
+const SEVSTATE = { Critical: "crit", Warning: "warn", Informational: "none" };
+const pill = (s, text) => `<span class="pill s-${s}">${ICON[s]}${esc(text || WORD[s])}</span>`;
+
+/* Thresholds: same values as config/thresholds.json */
+const TH = {
+  logonSuccess: { warn: 99, crit: 97, dir: "low" }, avgLogon: { warn: 30, crit: 45, dir: "high" },
+  appLaunch: { warn: 99, crit: 97, dir: "low" }, external: { warn: 98, crit: 95, dir: "low" },
+  vdaAvail: { warn: 98, crit: 95, dir: "low" }, capacity: { warn: 75, crit: 90, dir: "high" }
+};
+function rag(v, t) {
+  if (v == null) return "none";
+  if (t.dir === "low") return v < t.crit ? "crit" : v < t.warn ? "warn" : "good";
+  return v > t.crit ? "crit" : v > t.warn ? "warn" : "good";
+}
+
+/* ---------------- Sample data ---------------- */
+const REFRESH = Date.UTC(2026, 10, 4, 14, 0);
+const hourLabel = ms => String(new Date(ms).getUTCHours()).padStart(2, "0") + ":00";
+const HOURS = Array.from({ length: 24 }, (_, i) => REFRESH - (23 - i) * 3600e3);
+const LABELS = HOURS.map(hourLabel);
+
+// Weekday demand curve by local hour (US Eastern, UTC-5): concurrent sessions
+const CURVE = [[0,130],[5,120],[6,220],[7,620],[8,1150],[9,1520],[10,1760],[11,1850],[12,1700],[13,1880],[14,1950],[15,1900],[16,1650],[17,1100],[18,620],[19,380],[20,260],[22,170],[24,130]];
+function demand(lh) {
+  for (let k = 1; k < CURVE.length; k++) if (lh <= CURVE[k][0]) {
+    const [x0, y0] = CURVE[k - 1], [x1, y1] = CURVE[k]; return y0 + (y1 - y0) * (lh - x0) / (x1 - x0);
+  }
+  return 130;
+}
+const localHour = ms => (new Date(ms).getUTCHours() - 5 + 24) % 24;
+
+const SCEN = {
+  green: {
+    state: "good", sentence: "All Citrix services are healthy. Logons, app launches and remote access are within target.",
+    sessionsNow: 1490, usersNow: 1266, logonSuccess: 99.7, avgLogon: 26, appLaunch: 99.6, external: 99.2, internal: 99.6,
+    vdaReg: 91, vdaUsable: 91, connectors: [4, 4], fas: [2, 2], capacity: null, synthetic: [12, 12],
+    slotsNow: 2360, slotsMax: 2900, trend: 0.98, ramp: 0, profileExtra: 0, failLast: 0.3, extDrop: false,
+    cpuBoost: -6
+  },
+  yellow: {
+    state: "warn", sentence: "Citrix apps are available. Logons are slower than normal for Finance-Apps (58 s P90) and capacity is filling faster than usual.",
+    sessionsNow: 1512, usersNow: 1284, logonSuccess: 99.4, avgLogon: 41, appLaunch: 99.1, external: 98.7, internal: 99.4,
+    vdaReg: 89, vdaUsable: 91, connectors: [4, 4], fas: [2, 2], capacity: null, synthetic: [12, 12],
+    slotsNow: 1844, slotsMax: 2300, trend: 1.15, ramp: 1, profileExtra: 1, failLast: 0.6, extDrop: false,
+    cpuBoost: 6
+  },
+  red: {
+    state: "crit", sentence: "Service disruption: remote users cannot open Citrix apps through the Gateway service since 13:20 UTC. Office users are unaffected.",
+    sessionsNow: 1190, usersNow: 1011, logonSuccess: 91.3, avgLogon: 33, appLaunch: 88.4, external: 12.0, internal: 99.3,
+    vdaReg: 90, vdaUsable: 91, connectors: [4, 4], fas: [2, 2], capacity: null, synthetic: [6, 12],
+    slotsNow: 1844, slotsMax: 2300, trend: 0.8, ramp: 0.3, profileExtra: 0, failLast: 8.7, extDrop: true,
+    cpuBoost: -2
+  }
+};
+
+function build(scKey) {
+  const sc = SCEN[scKey], r = rng(scKey === "green" ? 11 : scKey === "yellow" ? 22 : 33);
+  const n = 24, d = { sc, key: scKey };
+  const jit = a => 1 + a * (r() - 0.5);
+  d.sessions = HOURS.map((h, i) => Math.round(demand(localHour(h)) * jit(0.05)));
+  d.sessions[n - 1] = sc.sessionsNow;
+  if (sc.extDrop) d.sessions[n - 1] = sc.sessionsNow;
+  d.users = d.sessions.map((s, i) => i === n - 1 ? sc.usersNow : Math.round(s * 0.85 * jit(0.02)));
+  d.lastWeek = HOURS.map(h => Math.round(demand(localHour(h)) * 0.95 * jit(0.05)));
+
+  d.logonAvg = HOURS.map((h, i) => {
+    const lh = localHour(h); let v = 24.5 + (lh >= 7 && lh <= 9 ? 2.5 : 0) + (r() - 0.5) * 1.6;
+    if (sc.ramp && i >= n - 5) v += (i - (n - 6)) * 3.2 * sc.ramp;
+    return v;
+  });
+  d.logonAvg[n - 1] = sc.avgLogon;
+  d.logonP90 = d.logonAvg.map(v => v * 1.42);
+  d.failPct = HOURS.map(() => 0.35 + r() * 0.35);
+  d.failPct[n - 1] = scKey === "red" ? 8.7 : sc.failLast;
+  if (scKey === "red") d.failPct[n - 2] = 1.9;
+
+  const PH = [["Brokering", 1.9], ["HDX connection", 2.6], ["Authentication (FAS)", 3.1], ["Group Policy", 4.2], ["Logon scripts", 2.0], ["Profile load", 0], ["Interactive", 3.4]];
+  d.phaseNames = PH.map(p => p[0]);
+  d.phases = PH.map((p, k) => d.logonAvg.map((avg, i) => {
+    if (k === 5) return Math.max(3, avg - PH.reduce((s, q, j) => j === 5 ? s : s + q[1], 0));
+    return p[1] * jit(0.12);
+  }));
+
+  d.launchOk = d.sessions.map((s, i) => Math.round(s * 0.42 * jit(0.08)));
+  d.launchFail = d.launchOk.map((l, i) => Math.round(l * (d.failPct[i] / 100) * 1.3));
+  if (scKey === "red") { d.launchFail[n - 1] = Math.round(d.launchOk[n - 1] * 0.13); }
+
+  d.internal = HOURS.map(() => 99.1 + r() * 0.6);
+  d.external = HOURS.map(() => 98.2 + r() * 1.1);
+  d.internal[n - 1] = sc.internal; d.external[n - 1] = sc.external;
+  if (scKey === "red") d.external[n - 2] = 97.9;
+
+  d.cpuAvg = d.sessions.map(s => 18 + s / 42 + (r() - 0.5) * 3);
+  d.cpuP95 = d.cpuAvg.map((v, i) => Math.min(99, v + 17 + (i >= n - 4 ? sc.cpuBoost : 0)));
+  d.memP95 = d.sessions.map((s, i) => 52 + s / 55 + (r() - 0.5) * 2 + (i >= n - 4 ? sc.cpuBoost / 2 : 0));
+  d.diskMin = HOURS.map((h, i) => 31 - i * 0.18 - r() * 0.6);
+  d.load95 = d.cpuP95.map(v => Math.min(10000, v * 94));
+
+  d.connectors = [
+    { name: "CC01 · AWS-USE1 · us-east-1a", cells: Array(24).fill("good") },
+    { name: "CC02 · AWS-USE1 · us-east-1b", cells: Array(24).fill("good").map((c, i) => scKey === "yellow" && i === 9 ? "warn" : c) },
+    { name: "CC03 · AWS-USE2 · us-east-2a", cells: Array(24).fill("good") },
+    { name: "CC04 · AWS-USE2 · us-east-2b", cells: Array(24).fill("good") }
+  ];
+
+  // Capacity
+  sc.capacity = 100 * sc.sessionsNow / sc.slotsNow;
+  d.slotsNow = sc.slotsNow; d.slotsMax = sc.slotsMax;
+  const past = 12, fut = 24;
+  d.fcLabels = []; d.fcActual = []; d.fcForecast = []; d.fcLo = []; d.fcHi = [];
+  d.exhaustIdx = null; d.peak = 0; d.peakIdx = 0;
+  for (let k = -past + 1; k <= fut; k++) {
+    const t = REFRESH + k * 3600e3; d.fcLabels.push(hourLabel(t));
+    if (k <= 0) { d.fcActual.push(d.sessions[n - 1 + k]); } else d.fcActual.push(null);
+    if (k < 0) { d.fcForecast.push(null); d.fcLo.push(null); d.fcHi.push(null); continue; }
+    const f = k === 0 ? sc.sessionsNow : demand(localHour(t)) * sc.trend;
+    const spread = k === 0 ? 0 : 0.04 + 0.004 * k;
+    d.fcForecast.push(f); d.fcLo.push(f * (1 - spread)); d.fcHi.push(f * (1 + spread));
+    if (f > d.peak) { d.peak = f; d.peakIdx = d.fcLabels.length - 1; }
+    if (d.exhaustIdx == null && k > 0 && f > 0.95 * sc.slotsMax) d.exhaustIdx = d.fcLabels.length - 1;
+  }
+  d.hoursToExhaust = d.exhaustIdx == null ? null : d.exhaustIdx - (past - 1);
+  d.peakTime = d.fcLabels[d.peakIdx];
+  return d;
+}
+
+/* Per-scenario narrative content */
+function issuesFor(key, d) {
+  if (key === "green") return [];
+  if (key === "yellow") return [
+    { sev: "Warning", id: "ALR-07", comp: "VDA fleet · Finance-Apps", users: 310, title: "Slow logons in Finance-Apps",
+      impact: "Logons take about 41 s instead of the 30 s target. Users notice the wait but can work.",
+      action: "Autoscale is adding 3 VDAs. Check the profile-load phase (FSLogix container share latency), which grew from 8 s to 19 s since 10:00 UTC.",
+      owner: "CTX-INFRA", trace: ["UX-05", "UX-06", "VDA-06", "VDA-07"], opened: "10:35 UTC" },
+    { sev: "Warning", id: "ALR-05", comp: "VDA capacity · all groups", users: null, title: `Capacity may run out in about ${d.hoursToExhaust} hours`,
+      impact: `At today's growth rate new logons could be refused around ${d.fcLabels[d.exhaustIdx]} UTC.`,
+      action: "Raise the Autoscale maximum for Finance-Apps from 40 to 46 VDAs before 17:00 UTC, and check the 2 unregistered VDAs.",
+      owner: "CTX-INFRA", trace: ["VDA-04", "VDA-16", "VDA-12"], opened: "13:05 UTC" },
+    { sev: "Warning", id: "ALR-04", comp: "VDA fleet · Finance-Apps", users: null, title: "2 VDAs unregistered",
+      impact: "Slightly reduced capacity. No user impact on its own.",
+      action: "Deregistration reason on both: AgentNotContactable after the nightly reboot. Put them in maintenance mode and restart them.",
+      owner: "CTX-INFRA", trace: ["VDA-01", "VDA-03", "VDA-13"], opened: "07:40 UTC" }
+  ];
+  return [
+    { sev: "Critical", id: "ALR-01", comp: "Gateway service · external path", users: 520, title: "Remote users cannot connect through the Gateway service",
+      impact: "Remote users cannot open Citrix apps. Office users are unaffected.",
+      action: "Citrix status page confirms a Gateway service degradation in US East. Sev1 case opened with Citrix. Tell remote users and point critical staff to the office network.",
+      owner: "CITRIX", trace: ["CC-04", "CC-06", "UX-11", "SYN-05"], opened: "13:25 UTC" },
+    { sev: "Critical", id: "ALR-06", comp: "User experience · logons", users: null, title: "Logon failure rate 8.7%",
+      impact: "8.7% of logon attempts in the last hour failed, nearly all from external connections.",
+      action: "Failures are classified as client connection failures on the external path. This follows ALR-01; no separate action is needed.",
+      owner: "CITRIX", trace: ["UX-04", "UX-12", "UX-11"], opened: "13:35 UTC" },
+    { sev: "Informational", id: "ALR-13", comp: "Citrix Cloud", users: null, title: "Citrix reports an active incident",
+      impact: "Citrix (the vendor) is investigating degraded Gateway service performance in US East.",
+      action: "Track the vendor ETA on the status page; post updates to the IT status channel every 30 minutes.",
+      owner: "CITRIX", trace: ["CC-01"], opened: "13:31 UTC" }
+  ];
+}
+
+function matrixFor(key, d) {
+  const g = Array(24).fill("good");
+  const tail = (s, k) => g.map((c, i) => i >= 24 - k ? s : c);
+  const rows = [
+    { comp: "Citrix Cloud control plane", owner: "CITRIX", s: "good", sig: "No incidents on the Citrix status page; API responds in 210 ms", cells: g, ids: ["CC-01", "CC-02", "CC-08"] },
+    { comp: "Gateway service", owner: "CITRIX", s: "good", sig: "External synthetics 6/6, internal 6/6; external success 98.7%", cells: g, ids: ["CC-04", "CC-05", "CC-06", "CC-07"] },
+    { comp: "Cloud Connectors", owner: "CTX-INFRA", s: "good", sig: "4/4 online; 2 per resource location; no service faults", cells: g.map((c, i) => key === "yellow" && i === 9 ? "warn" : c), ids: ["CN-01", "CN-02", "CN-03", "CN-05"] },
+    { comp: "VDA fleet", owner: "CTX-INFRA", s: "good", sig: "91/91 registered; Load Index P95 6,400; CPU P95 64%", cells: g, ids: ["VDA-01", "VDA-04", "VDA-06", "VDA-10"] },
+    { comp: "Federated Authentication (FAS)", owner: "CTX-INFRA", s: "good", sig: "2/2 up; 100% certificate issuance; RA certificate expires in 211 days", cells: g, ids: ["FAS-01", "FAS-02", "FAS-05", "FAS-07"] },
+    { comp: "App-V", owner: "CTX-INFRA", s: "good", sig: "Publishing server OK (180 ms); 0 package failures", cells: g, ids: ["APV-02", "APV-03", "APV-04"] },
+    { comp: "AWS infrastructure", owner: "AWS", s: "good", sig: "0 failed status checks; us-east-1 and us-east-2 healthy", cells: g, ids: ["AWS-01", "AWS-02", "AWS-04", "AWS-07"] }
+  ];
+  if (key === "yellow") {
+    Object.assign(rows[3], { s: "warn", sig: "89/91 registered; Load Index P95 7,150; CPU P95 76%; capacity 82%", cells: tail("warn", 4) });
+  }
+  if (key === "red") {
+    Object.assign(rows[0], { s: "warn", sig: "Citrix reports a Gateway incident in US East (investigating)", cells: tail("warn", 1) });
+    Object.assign(rows[1], { s: "crit", sig: "External synthetics 0/6 since 13:20 UTC; internal 6/6; external success 12%", cells: tail("crit", 1) });
+  }
+  return rows;
+}
+
+function kpisFor(key, d) {
+  const sc = d.sc, n = 23;
+  const ext = rag(sc.external, TH.external);
+  const unreg = sc.vdaUsable - sc.vdaReg, vdaPct = 100 * sc.vdaReg / sc.vdaUsable;
+  const crit = issuesFor(key, d).filter(x => x.sev === "Critical").length;
+  const lwSess = d.lastWeek[n], dSess = 100 * (sc.sessionsNow - lwSess) / lwSess;
+  return [
+    { id: "users", label: "Active users", value: fmtInt(sc.usersNow), s: "none", plain: "Context", sub: [`${dSess >= 0 ? "+" : ""}${fmt1(dSess)}% vs last week`, ""], spark: d.users,
+      why: "How many people depend on Citrix right now. A sudden drop against the same hour last week usually means people cannot get in.",
+      ids: [["UX-01", "Concurrent users: distinct users with an active or disconnected session"], ["UX-02", "Active and disconnected sessions"]],
+      th: "No target. Warning at −40% vs same hour last week; critical at −70% (business hours).", src: "Citrix Monitor OData: Sessions", owner: "CTX-INFRA" },
+    { id: "sessions", label: "Active sessions", value: fmtInt(sc.sessionsNow), s: "none", plain: "Context", sub: [`Last week ${fmtInt(lwSess)}`, ""], spark: d.sessions,
+      why: "Load on the platform. Drives capacity and cost.",
+      ids: [["UX-02", "Active + disconnected sessions"], ["VDA-05", "Session density per VDA"]],
+      th: "No target. Disconnected sessions above 15% of the total raise a warning.", src: "Citrix Monitor OData: Sessions", owner: "CTX-INFRA" },
+    { id: "logon", label: "Logon success", value: fmt1(sc.logonSuccess), unit: "%", s: rag(sc.logonSuccess, TH.logonSuccess), sub: ["Target ≥ 99%", ""], spark: d.failPct.map(v => 100 - v),
+      why: "Can users sign in and get a session? Failures are split into connection, machine, capacity, licence and configuration causes.",
+      ids: [["UX-04", "Logon success rate"], ["UX-03", "Session availability"], ["UX-12", "Failed authentication attempts"], ["FAS-02", "FAS certificate issuance"], ["VDA-01", "VDA registration"], ["CN-01", "Cloud Connectors online"]],
+      th: "Healthy ≥ 99% · Warning 97–99% · Critical < 97% (min. 50 attempts).", src: "Monitor OData: ConnectionFailureLogs, Sessions", owner: "CTX-INFRA", alert: "ALR-06" },
+    { id: "avglogon", label: "Average logon time", value: Math.round(sc.avgLogon), unit: "s", s: rag(sc.avgLogon, TH.avgLogon), sub: ["Target < 30 s", `P90 ${Math.round(sc.avgLogon * 1.42)} s`], spark: d.logonAvg, sparkHigh: true,
+      why: "How long people wait before they can work. The Trends view breaks it down by phase to show the cause.",
+      ids: [["UX-05", "Average and P90 logon duration"], ["UX-06", "Logon phase breakdown"], ["VDA-06", "VDA CPU"], ["FAS-06", "FAS signing latency"], ["APV-04", "App-V streaming"]],
+      th: "Healthy avg < 30 s, P90 < 45 s · Warning 30–45 s · Critical > 45 s or P90 > 60 s.", src: "Monitor OData: Sessions.LogOnDuration, Connections phases", owner: "CTX-INFRA", alert: "ALR-07" },
+    { id: "launch", label: "App launch success", value: fmt1(sc.appLaunch), unit: "%", s: rag(sc.appLaunch, TH.appLaunch), sub: ["Target ≥ 99%", ""], spark: d.launchOk.map((o, i) => 100 * o / (o + d.launchFail[i])),
+      why: "Can users open the app they clicked? Includes launch failures and crashes right after launch.",
+      ids: [["UX-07", "App launch success by app and delivery group"], ["UX-13", "Published app failures"], ["VDA-14", "App crash and fault rate"], ["APV-05", "App-V package launch failures"], ["SYN-04", "Synthetic app launch"]],
+      th: "Healthy ≥ 99% · Warning 97–99% · Critical < 97% (apps with ≥ 20 launches per hour).", src: "Monitor OData: ApplicationInstances, ApplicationFaults", owner: "CTX-INFRA", alert: "ALR-08" },
+    { id: "external", label: "External connection success", value: fmt1(sc.external), unit: "%", s: ext, sub: ["Target ≥ 98%", `Internal ${fmt1(sc.internal)}%`], spark: d.external,
+      why: "Separates remote-access problems from office problems. All users connect through the Citrix-managed Gateway service.",
+      ids: [["UX-11", "Connection success by path"], ["CC-04", "External synthetic launch via Gateway"], ["CC-06", "Gateway connection success"], ["UX-10", "ICA round-trip time"], ["CC-01", "Citrix status page"]],
+      th: "Healthy ≥ 98% · Warning 95–98% · Critical < 95%, or no successful external connections for 10 minutes.", src: "Monitor OData: Connections (client IP) + synthetic probes", owner: "CITRIX", alert: "ALR-01" },
+    { id: "vda", label: "VDA availability", value: fmt1(vdaPct), unit: "%", s: rag(vdaPct, TH.vdaAvail), sub: [`${sc.vdaReg}/${sc.vdaUsable} registered`, unreg ? `${unreg} unregistered` : ""], spark: HOURS.map((h, i) => i >= 18 && unreg ? vdaPct : 100),
+      why: "Servers that can accept users. An unregistered server is powered on but unusable.",
+      ids: [["VDA-01", "Registered % of usable VDAs"], ["VDA-02", "Maintenance mode"], ["VDA-03", "Fault state"], ["VDA-11", "EC2 status checks"], ["CN-01", "Cloud Connectors"]],
+      th: "Healthy ≥ 98% · Warning 95–98% · Critical < 95% or 5+ VDAs dropping in 15 minutes.", src: "Monitor OData: Machines; DaaS REST: /Machines", owner: "CTX-INFRA", alert: "ALR-04" },
+    { id: "cc", label: "Cloud Connectors", value: `${sc.connectors[0]}/${sc.connectors[1]}`, s: "good", sub: ["≥ 2 per location", "2 locations"], spark: null,
+      why: "Connectors link our AWS servers to Citrix Cloud. With none healthy in a location, new logons there fail.",
+      ids: [["CN-01", "Connectors online vs expected"], ["CN-02", "Registration in Citrix Cloud"], ["CN-03", "Outbound connectivity"], ["CN-05", "Citrix service health"]],
+      th: "Healthy: all online · Warning: 1 offline but ≥ 2 left · Critical: fewer than 2 healthy (0 = P1 page).", src: "WinRM health check on each connector", owner: "CTX-INFRA", alert: "ALR-02 / ALR-03" },
+    { id: "fas", label: "Sign-in service (FAS)", value: `${sc.fas[0]}/${sc.fas[1]}`, s: "good", sub: ["Certs 100% issued", "RA cert 211 d"], spark: null,
+      why: "FAS provides single sign-on into the app servers. If it fails, users cannot complete sign-in.",
+      ids: [["FAS-01", "Service availability"], ["FAS-02", "Certificate issuance success"], ["FAS-03", "Certificate authority reachability"], ["FAS-05", "Certificate expiry"]],
+      th: "Healthy: all servers up, issuance ≥ 99% · Critical: all down or issuance < 95%.", src: "WinRM: FAS service, event log, certutil", owner: "CTX-INFRA", alert: "ALR-09" },
+    { id: "cap", label: "Capacity used", value: Math.round(sc.capacity), unit: "%", s: rag(sc.capacity, TH.capacity), sub: [d.hoursToExhaust ? `Full in ~${d.hoursToExhaust} h` : "Not full within 24 h", `${fmtInt(sc.slotsNow - sc.sessionsNow)} free`], spark: d.sessions.map(s => 100 * s / sc.slotsNow), sparkHigh: true,
+      why: "Share of session slots in use on usable servers. The Capacity view forecasts the next 24 hours.",
+      ids: [["VDA-04", "Slots available vs in use"], ["VDA-16", "Hours to capacity exhaustion"], ["VDA-12", "Scale events"], ["AWS-09", "vCPU quota headroom"]],
+      th: "Healthy < 75% · Warning 75–90% or full within 8 h · Critical > 90% or full within 4 h.", src: "Monitor OData: Machines + delivery-group max sessions", owner: "CTX-INFRA", alert: "ALR-05" },
+    { id: "crit", label: "Open critical alerts", value: String(crit), s: crit ? "crit" : "good", sub: [`${issuesFor(key, d).length} open in total`, ""], spark: null,
+      why: "Critical alerts page the on-call engineer and show in the banner.",
+      ids: [["AlertHistory", "Open alerts with severity Critical"]],
+      th: "Any open critical alert is red.", src: "mon.AlertHistory", owner: "CTX-INFRA" },
+    { id: "syn", label: "Synthetic checks", value: `${sc.synthetic[0]}/${sc.synthetic[1]}`, s: sc.synthetic[0] === sc.synthetic[1] ? "good" : "crit", sub: ["Internal + external", sc.synthetic[0] < sc.synthetic[1] ? "External failing" : ""], spark: null,
+      why: "Robot users sign in and launch an app every 5–15 minutes from inside and outside the network.",
+      ids: [["SYN-01", "Workspace reachable, TLS valid"], ["SYN-04", "Published app launch"], ["SYN-05", "External path via Gateway"], ["SYN-06", "Internal path via Gateway"]],
+      th: "Two consecutive failures from two or more external probes page the on-call engineer.", src: "Synthetic probes → mon.SyntheticResult", owner: "CITRIX", alert: "ALR-01" }
+  ];
+}
+
+const APPS = [
+  ["Microsoft Outlook", "General-Apps", 612, 655, 24, 33, 0.3, false],
+  ["Microsoft Excel", "General-Apps", 488, 702, 23, 31, 0.4, false],
+  ["Microsoft Teams", "General-Apps", 402, 410, 27, 38, 0.5, false],
+  ["Microsoft Word", "General-Apps", 341, 389, 22, 30, 0.2, false],
+  ["Finance Ledger", "Finance-Apps", 274, 301, 44, 63, 1.6, true],
+  ["Google Chrome", "General-Apps", 233, 260, 21, 28, 0.2, false],
+  ["SAP GUI", "Finance-Apps", 198, 233, 47, 68, 2.4, true],
+  ["Claims Workbench", "General-Apps", 156, 171, 31, 44, 0.6, false],
+  ["Contractor Portal", "Contractors-External", 88, 97, 29, 41, 0.9, false],
+  ["CAD Viewer", "Engineering-Apps", 64, 71, 38, 52, 1.4, false]
+];
+function appsFor(key) {
+  return APPS.map(([name, dg, users, launches, avg, p90, fail, appv]) => {
+    let f = fail, a = avg, p = p90, u = users;
+    if (key === "green") { f = fail * 0.4; if (dg === "Finance-Apps") { a = avg * 0.72; p = p90 * 0.7; } }
+    if (key === "red") { f = dg === "Contractors-External" ? 61 : fail + 9.8; u = Math.round(users * (dg === "Contractors-External" ? 0.35 : 0.8)); }
+    return { name, dg, users: u, launches: Math.round(launches * u / users), avg: a, p90: p, fail: f, appv, s: rag(100 - f, TH.appLaunch) };
+  });
+}
+function dgsFor(key) {
+  const base = [
+    { name: "Finance-Apps", users: 310, avg: 41, p90: 58, fail: 0.7, load: 8100, unreg: 2, cap: 91 },
+    { name: "General-Apps", users: 812, avg: 27, p90: 38, fail: 0.4, load: 6200, unreg: 0, cap: 76 },
+    { name: "Engineering-Apps", users: 96, avg: 29, p90: 41, fail: 0.5, load: 5100, unreg: 0, cap: 64 },
+    { name: "Contractors-External", users: 66, avg: 30, p90: 43, fail: 0.9, load: 4300, unreg: 0, cap: 58 }
+  ];
+  if (key === "green") Object.assign(base[0], { avg: 27, p90: 39, unreg: 0, load: 6300, cap: 66 }), Object.assign(base[1], { cap: 60 });
+  if (key === "red") Object.assign(base[0], { avg: 31, p90: 44, unreg: 1, load: 6900, cap: 72 }), Object.assign(base[3], { users: 23, fail: 61, cap: 19 }), Object.assign(base[1], { fail: 9.9 });
+  return base.map(g => {
+    const st = [rag(g.avg, TH.avgLogon), rag(g.p90, { warn: 45, crit: 60, dir: "high" }), rag(100 - g.fail, TH.logonSuccess), g.unreg ? "warn" : "good", rag(g.load, { warn: 7000, crit: 8500, dir: "high" })];
+    g.s = st.includes("crit") ? "crit" : st.includes("warn") ? "warn" : "good";
+    return g;
+  }).sort((a, b) => ({ crit: 0, warn: 1, good: 2 })[a.s] - ({ crit: 0, warn: 1, good: 2 })[b.s]);
+}
+
+/* ---------------- Tooltip ---------------- */
+const tip = $("#tip");
+function showTip(e, title, rows) {
+  tip.innerHTML = `<div class="t">${esc(title)}</div>` + rows.map(r => `<div class="row"><span>${r.c ? `<i style="--c:${r.c}"></i>` : ""}${esc(r.k)}</span><b>${esc(r.v)}</b></div>`).join("");
+  tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > innerWidth - 8) x = e.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = e.clientY - h - 14;
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+}
+const hideTip = () => { tip.style.display = "none"; };
+
+/* ---------------- Charts (SVG) ---------------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; }
+function ticks(min, max, n = 4) { const st = niceStep(max - min || 1, n), lo = Math.floor(min / st) * st, hi = Math.ceil(max / st) * st; const out = []; for (let v = lo; v <= hi + 1e-9; v += st) out.push(+v.toFixed(6)); return { st, out, min: lo, max: hi }; }
+
+function lineChart(host, o) {
+  host.innerHTML = "";
+  const W = Math.max(260, host.clientWidth), H = o.height || 220;
+  const endL = o.endLabels !== false && o.series.length <= 4 && W > 380;
+  const m = { l: 44, r: endL ? 92 : 14, t: 10, b: 24 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, n = o.labels.length;
+  const all = o.series.flatMap(s => s.values).concat(o.band ? o.band.hi : []).concat((o.refs || []).map(r => r.y)).filter(v => v != null);
+  let lo = o.yMin != null ? o.yMin : Math.min(...all), hi = o.yMax != null ? o.yMax : Math.max(...all);
+  if (o.yMin == null) lo = Math.min(lo, 0) === 0 && o.zero !== false ? 0 : lo - (hi - lo) * 0.1;
+  const T = ticks(lo, hi + (o.yMax == null ? (hi - lo) * 0.05 : 0), o.ticks || 4);
+  const y0 = o.yMin != null ? o.yMin : T.min, y1 = o.yMax != null ? o.yMax : T.max;
+  const X = i => m.l + (n === 1 ? iw / 2 : i * iw / (n - 1));
+  const Y = v => m.t + ih - (v - y0) / (y1 - y0) * ih;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.aria || "" }, host);
+  // grid
+  T.out.filter(v => v >= y0 && v <= y1).forEach(v => {
+    el("line", { x1: m.l, x2: m.l + iw, y1: Y(v), y2: Y(v), style: `stroke:var(${v === y0 ? "--axis" : "--line"});stroke-width:1` }, svg);
+    const t = el("text", { x: m.l - 8, y: Y(v) + 4, "text-anchor": "end", style: "fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums" }, svg); t.textContent = o.yFmt ? o.yFmt(v) : v;
+  });
+  const every = Math.ceil(n / Math.max(2, Math.floor(iw / 62)));
+  o.labels.forEach((lb, i) => { if (i % every === 0 || i === n - 1) { if (i !== n - 1 && n - 1 - i < every * 0.6) return; const t = el("text", { x: X(i), y: H - 6, "text-anchor": i === 0 ? "start" : i === n - 1 ? "end" : "middle", style: "fill:var(--muted);font-size:11px" }, svg); t.textContent = lb; } });
+  // band
+  if (o.band) {
+    let d = "", seg = [];
+    o.band.hi.forEach((v, i) => { if (v != null) seg.push(i); });
+    if (seg.length) {
+      d = seg.map((i, k) => `${k ? "L" : "M"}${X(i)},${Y(o.band.hi[i])}`).join("") + seg.slice().reverse().map(i => `L${X(i)},${Y(o.band.lo[i])}`).join("") + "Z";
+      el("path", { d, style: `fill:${o.band.color};opacity:0.14` }, svg);
+    }
+  }
+  // reference lines
+  (o.refs || []).forEach(r => {
+    el("line", { x1: m.l, x2: m.l + iw, y1: Y(r.y), y2: Y(r.y), style: "stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 4;opacity:.8" }, svg);
+    if (r.label) { const t = el("text", { x: m.l + 6, y: Y(r.y) - 5, style: "fill:var(--ink-2);font-size:11px" }, svg); t.textContent = r.label; }
+  });
+  if (o.vline != null) {
+    el("line", { x1: X(o.vline.i), x2: X(o.vline.i), y1: m.t, y2: m.t + ih, style: `stroke:var(${o.vline.tone || "--crit"});stroke-width:1.5;stroke-dasharray:2 3` }, svg);
+    const t = el("text", { x: X(o.vline.i) - 6, y: m.t + 12, "text-anchor": "end", style: `fill:var(${o.vline.tone === "--warn" ? "--warn-ink" : "--crit-ink"});font-size:11px;font-weight:600` }, svg); t.textContent = o.vline.label;
+  }
+  // series
+  o.series.forEach((s, si) => {
+    let d = "", pen = false;
+    s.values.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`; pen = true; });
+    if (o.area && si === 0) {
+      const idx = s.values.map((v, i) => v != null ? i : -1).filter(i => i >= 0);
+      el("path", { d: d + `L${X(idx[idx.length - 1])},${Y(y0)}L${X(idx[0])},${Y(y0)}Z`, style: `fill:${s.color};opacity:0.10` }, svg);
+    }
+    el("path", { d, style: `fill:none;stroke:${s.color};stroke-width:${s.width || 2};stroke-linejoin:round;stroke-linecap:round;${s.dash ? "stroke-dasharray:5 4;" : ""}` }, svg);
+  });
+  // end points + direct labels
+  if (endL) {
+    const ends = o.series.map(s => { let i = s.values.length - 1; while (i >= 0 && s.values[i] == null) i--; return { s, i, y: Y(s.values[i]) }; }).filter(e => e.i >= 0);
+    ends.sort((a, b) => a.y - b.y);
+    for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < 14) ends[k].y = ends[k - 1].y + 14;
+    ends.forEach(e => {
+      if (!e.s.dash) el("circle", { cx: X(e.i), cy: Y(e.s.values[e.i]), r: 4, style: `fill:${e.s.color};stroke:var(--surface);stroke-width:2` }, svg);
+      const t = el("text", { x: X(n - 1) + 8, y: e.y + 4, style: "fill:var(--ink-2);font-size:11px" }, svg);
+      t.textContent = (e.s.short || e.s.name) + " " + (o.yFmt ? o.yFmt(e.s.values[e.i]) : e.s.values[e.i]);
+    });
+  }
+  // hover layer
+  const cross = el("line", { y1: m.t, y2: m.t + ih, style: "stroke:var(--axis);stroke-width:1;display:none" }, svg);
+  const dots = o.series.map(s => el("circle", { r: 4, style: `fill:${s.color};stroke:var(--surface);stroke-width:2;display:none` }, svg));
+  const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ih, style: "fill:transparent;cursor:crosshair" }, svg);
+  hit.addEventListener("pointermove", e => {
+    const b = svg.getBoundingClientRect(); const i = Math.max(0, Math.min(n - 1, Math.round((e.clientX - b.left - m.l) / (iw / (n - 1)))));
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.style.display = "";
+    const rows = [];
+    o.series.forEach((s, k) => { const v = s.values[i]; if (v == null) { dots[k].style.display = "none"; return; } dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(v)); dots[k].style.display = ""; rows.push({ k: s.name, v: o.yFmt ? o.yFmt(v, true) : v, c: s.color }); });
+    if (o.band && o.band.hi[i] != null) rows.push({ k: "Range", v: `${o.yFmt(o.band.lo[i])}–${o.yFmt(o.band.hi[i])}` });
+    (o.refs || []).forEach(r => rows.push({ k: r.label, v: o.yFmt ? o.yFmt(r.y) : r.y }));
+    showTip(e, (o.tipTitle ? o.tipTitle(i) : o.labels[i] + " UTC"), rows);
+  });
+  hit.addEventListener("pointerleave", () => { cross.style.display = "none"; dots.forEach(d => d.style.display = "none"); hideTip(); });
+}
+
+function barChart(host, o) {
+  host.innerHTML = "";
+  const W = Math.max(260, host.clientWidth), H = o.height || 220, m = { l: 44, r: 10, t: 10, b: 24 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, n = o.labels.length;
+  const totals = o.labels.map((_, i) => o.series.reduce((s, se) => s + se.values[i], 0));
+  const T = ticks(0, o.yMax || Math.max(...totals) * 1.05, 4), y1 = o.yMax || T.max;
+  const Y = v => m.t + ih - v / y1 * ih, step = iw / n, bw = Math.max(3, Math.min(26, step * 0.64));
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.aria || "" }, host);
+  T.out.filter(v => v <= y1).forEach(v => {
+    el("line", { x1: m.l, x2: m.l + iw, y1: Y(v), y2: Y(v), style: `stroke:var(${v === 0 ? "--axis" : "--line"});stroke-width:1` }, svg);
+    const t = el("text", { x: m.l - 8, y: Y(v) + 4, "text-anchor": "end", style: "fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums" }, svg); t.textContent = o.yFmt ? o.yFmt(v) : v;
+  });
+  const every = Math.ceil(n / Math.max(2, Math.floor(iw / 62)));
+  o.labels.forEach((lb, i) => { if (i % every === 0) { const t = el("text", { x: m.l + step * i + step / 2, y: H - 6, "text-anchor": "middle", style: "fill:var(--muted);font-size:11px" }, svg); t.textContent = lb; } });
+  o.labels.forEach((lb, i) => {
+    const cx = m.l + step * i + step / 2, x = cx - bw / 2; let acc = 0;
+    const g = el("g", {}, svg);
+    const top = o.series.map((s, k) => s.values[i] > 0 ? k : -1).filter(k => k >= 0).pop();
+    o.series.forEach((s, k) => {
+      const v = s.values[i]; if (!(v > 0)) return;
+      const yTop = Y(acc + v), yBot = Y(acc); let h = yBot - yTop - (k === top ? 0 : 2); acc += v;
+      if (h < 0.5) h = 0.5;
+      if (k === top) { const r = Math.min(4, h / 2, bw / 2); el("path", { d: `M${x},${yTop + h}V${yTop + r}Q${x},${yTop} ${x + r},${yTop}H${x + bw - r}Q${x + bw},${yTop} ${x + bw},${yTop + r}V${yTop + h}Z`, style: `fill:${s.color}` }, g); }
+      else el("rect", { x, y: yTop + 2, width: bw, height: h, style: `fill:${s.color}` }, g);
+    });
+    const hit = el("rect", { x: m.l + step * i, y: m.t, width: step, height: ih, style: "fill:transparent" }, svg);
+    hit.addEventListener("pointermove", e => { g.style.opacity = 0.75; showTip(e, lb + " UTC", o.series.map(s => ({ k: s.name, v: o.yFmt ? o.yFmt(s.values[i], true) : s.values[i], c: s.color })).reverse().concat(o.total ? [{ k: "Total", v: o.yFmt ? o.yFmt(totals[i], true) : totals[i] }] : [])); });
+    hit.addEventListener("pointerleave", () => { g.style.opacity = 1; hideTip(); });
+  });
+}
+
+function sparkline(svg, values, state, higherIsWorse) {
+  const W = 160, H = 26, n = values.length, lo = Math.min(...values), hi = Math.max(...values), pad = (hi - lo) * 0.15 || 1;
+  const X = i => i * (W - 4) / (n - 1) + 2, Y = v => H - 3 - (v - (lo - pad)) / (hi - lo + 2 * pad) * (H - 6);
+  const d = values.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+  const col = "var(--accent)";
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none");
+  svg.innerHTML = `<path d="${d}L${X(n - 1)},${H}L${X(0)},${H}Z" style="fill:${col};opacity:.08"/><path d="${d}" style="fill:none;stroke:${col};stroke-width:1.5;vector-effect:non-scaling-stroke"/>`;
+}
+
+/* Card scaffold with a table view toggle */
+function card(host, o) {
+  host.innerHTML = `<div class="card-h"><div><h2>${esc(o.title)}</h2><div class="sub">${esc(o.sub || "")}</div></div><button type="button" class="ghost" aria-pressed="false">Table</button></div>
+    ${o.legend ? `<div class="legend">${o.legend.map(l => `<span><i class="${l.dash ? "dash" : l.sq ? "sq" : ""}" style="--c:${l.c}"></i>${esc(l.k)}</span>`).join("")}</div>` : ""}
+    <div class="chart"></div><div class="tscroll" hidden></div>`;
+  const chart = host.querySelector(".chart"), tbl = host.querySelector(".tscroll"), btn = host.querySelector("button");
+  o.draw(chart);
+  btn.addEventListener("click", () => {
+    const on = btn.getAttribute("aria-pressed") !== "true"; btn.setAttribute("aria-pressed", on); btn.textContent = on ? "Chart" : "Table";
+    chart.hidden = on; tbl.hidden = !on; host.querySelector(".legend") && (host.querySelector(".legend").hidden = on);
+    if (on) { const t = o.table(); tbl.innerHTML = `<table class="dt-table"><thead><tr>${t.cols.map((c, i) => `<th${i ? ' class="r"' : ""}>${esc(c)}</th>`).join("")}</tr></thead><tbody>${t.rows.map(r => `<tr>${r.map((c, i) => `<td${i ? ' class="r"' : ""}>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`; }
+    else o.draw(chart);
+  });
+}
+const seriesTable = (labels, series, fmt) => () => ({ cols: ["Hour (UTC)"].concat(series.map(s => s.name)), rows: labels.map((l, i) => [l].concat(series.map(s => s.values[i] == null ? "–" : fmt(s.values[i])))) });
+
+/* ---------------- Drawer ---------------- */
+const drawer = $("#drawer"), scrim = $("#scrim"); let lastFocus = null;
+function openDrawer(html) {
+  lastFocus = document.activeElement; $("#dr-body").innerHTML = html; scrim.style.display = "block"; drawer.classList.add("open"); drawer.focus();
+}
+function closeDrawer() { drawer.classList.remove("open"); scrim.style.display = "none"; if (lastFocus) lastFocus.focus(); }
+$("#dr-close").addEventListener("click", closeDrawer); scrim.addEventListener("click", closeDrawer);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && drawer.classList.contains("open")) closeDrawer(); });
+const traceHtml = ids => `<div class="trace">${ids.map(([id, t]) => `<div><code>${esc(id)}</code><span>${esc(t)}</span></div>`).join("")}</div>`;
+
+/* ---------------- Render ---------------- */
+let D, KEY = "yellow", VIEW = "overview";
+
+function renderBanner() {
+  const s = D.sc.state, issues = issuesFor(KEY, D);
+  const crit = issues.filter(i => i.sev === "Critical").length, warn = issues.filter(i => i.sev === "Warning").length;
+  const b = $("#banner"); b.className = "banner s-" + s;
+  b.innerHTML = `<div class="lamp">${ICON[s]}<span>${{ good: "Green", warn: "Yellow", crit: "Red" }[s]}</span></div>
+    <p>${esc(D.sc.sentence)}</p>
+    <div class="meta"><span>Critical <b class="num">${crit}</b></span><span>Warnings <b class="num">${warn}</b></span><span>Last refresh <b>04 Nov 2026, 14:00 UTC</b></span><span>Next <b>15:05 UTC</b></span></div>`;
+}
+
+function renderOverview() {
+  const K = kpisFor(KEY, D), host = $("#kpis");
+  host.innerHTML = K.map((k, i) => `<button type="button" class="tile s-${k.s}" id="kpi-${k.id}" data-i="${i}">
+      <span class="lbl">${esc(k.label)} ${k.s === "none" ? "" : pill(k.s)}</span>
+      <span class="val num">${esc(k.value)}${k.unit ? `<small>${esc(k.unit)}</small>` : ""}</span>
+      ${k.spark ? '<svg class="spark" aria-hidden="true"></svg>' : '<svg class="spark" aria-hidden="true"></svg>'}
+      <span class="sub"><span>${esc(k.sub[0])}</span><span>${esc(k.sub[1] || "")}</span></span></button>`).join("");
+  host.querySelectorAll(".tile").forEach(t => {
+    const k = K[+t.dataset.i], sv = t.querySelector("svg.spark");
+    if (k.spark) sparkline(sv, k.spark, k.s, k.sparkHigh); else sv.style.visibility = "hidden";
+    t.addEventListener("click", () => openDrawer(`<h3 id="dr-title">${esc(k.label)}</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${k.s === "none" ? pill("none", "Context only") : pill(k.s)}<span class="owner">${esc(k.owner)}</span></div>
+      <p style="font-family:var(--font-display);font-size:34px;font-weight:600;margin:4px 0 10px" class="num">${esc(k.value)}${k.unit ? `<small style="font-size:18px;color:var(--ink-2)"> ${esc(k.unit)}</small>` : ""}</p>
+      <p>${esc(k.why)}</p>
+      <h4>Thresholds</h4><p>${esc(k.th)}</p>
+      <h4>Traces to technical metrics</h4>${traceHtml(k.ids)}
+      <h4>Where the number comes from</h4>
+      <dl><dt>Source</dt><dd>${esc(k.src)}</dd><dt>Refresh</dt><dd>Hourly at :05; availability checks every 5 minutes</dd>${k.alert ? `<dt>Alert</dt><dd>${esc(k.alert)}</dd>` : ""}</dl>`));
+  });
+
+  const rows = matrixFor(KEY, D);
+  $("#matrix").innerHTML = `<thead><tr><th>Component</th><th>Owner</th><th>Status</th><th>Signal</th><th>Last 24 h</th></tr></thead><tbody>` +
+    rows.map((r, i) => `<tr class="click" tabindex="0" data-i="${i}"><td><b style="font-weight:600">${esc(r.comp)}</b></td><td><span class="owner">${r.owner}</span></td><td>${pill(r.s)}</td><td style="min-width:220px;color:var(--ink-2)">${esc(r.sig)}</td>
+      <td><div class="strip" aria-label="Hourly status, last 24 hours">${r.cells.map((c, h) => `<i class="s-${c}" data-h="${h}" data-s="${c}"></i>`).join("")}</div></td></tr>`).join("") + "</tbody>";
+  $("#matrix").querySelectorAll("tr.click").forEach(tr => {
+    const r = rows[+tr.dataset.i];
+    const open = () => openDrawer(`<h3 id="dr-title">${esc(r.comp)}</h3><div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">${pill(r.s)}<span class="owner">${r.owner}</span></div>
+      <p>${esc(r.sig)}.</p><h4>Owner</h4><p>${{ CITRIX: "Managed by Citrix. We detect, check the Citrix status page, open a case and tell users.", "CTX-INFRA": "Managed by the internal Citrix infrastructure team, who fix it with the runbooks.", AWS: "Managed by the internal cloud team, escalating to AWS for hardware or Availability Zone issues." }[r.owner]}</p>
+      <h4>Technical metrics behind this row</h4>${traceHtml(r.ids.map(id => [id, METRIC_NAMES[id] || ""]))}`);
+    tr.addEventListener("click", open); tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    tr.querySelectorAll(".strip i").forEach(c => { c.addEventListener("pointermove", e => showTip(e, LABELS[+c.dataset.h] + " UTC", [{ k: r.comp, v: WORD[c.dataset.s] }])); c.addEventListener("pointerleave", hideTip); });
+  });
+
+  const issues = issuesFor(KEY, D), ih = $("#issues");
+  if (!issues.length) { ih.innerHTML = `<div class="empty">${ICON.good}<div><b>No open alerts.</b><br><span style="color:var(--muted)">Last alert resolved at 07:35 UTC: 2 VDAs unregistered after the nightly reboot (ALR-04).</span></div></div>`; return; }
+  ih.innerHTML = `<div class="tscroll"><table><thead><tr><th></th><th>Issue</th><th>Affected</th><th>Owner</th></tr></thead><tbody>` +
+    issues.map((x, i) => `<tr class="click s-${SEVSTATE[x.sev]}" tabindex="0" data-i="${i}"><td style="width:10px"><span class="sev"></span></td>
+      <td><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">${pill(SEVSTATE[x.sev] === "none" ? "none" : SEVSTATE[x.sev], x.sev)}<b style="font-weight:600">${esc(x.title)}</b></div>
+      <div style="color:var(--ink-2);font-size:12.5px">${esc(x.impact)}</div></td>
+      <td style="white-space:nowrap;color:var(--ink-2)">${x.users ? `~${fmtInt(x.users)} users` : esc(x.comp.split(" · ")[1] || "—")}</td><td><span class="owner">${x.owner}</span></td></tr>`).join("") + "</tbody></table></div>";
+  ih.querySelectorAll("tr.click").forEach(tr => {
+    const x = issues[+tr.dataset.i];
+    const open = () => openDrawer(`<h3 id="dr-title">${esc(x.title)}</h3><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">${pill(SEVSTATE[x.sev], x.sev)}<span class="owner">${x.owner}</span><span style="color:var(--muted);font-size:12.5px">${esc(x.id)} · opened ${esc(x.opened)}</span></div>
+      <h4>Business impact</h4><p>${esc(x.impact)}</p><h4>Next action</h4><p>${esc(x.action)}</p>
+      <dl><dt>Component</dt><dd>${esc(x.comp)}</dd><dt>Affected</dt><dd>${x.users ? `About ${fmtInt(x.users)} users` : "See component"}</dd></dl>
+      <h4>Technical metrics</h4>${traceHtml(x.trace.map(id => [id, METRIC_NAMES[id] || ""]))}`);
+    tr.addEventListener("click", open); tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+}
+
+const METRIC_NAMES = {
+  "CC-01": "Citrix Cloud service status", "CC-02": "Control-plane API reachability", "CC-04": "External launch via Gateway (synthetic)", "CC-05": "Internal launch via Gateway (synthetic)", "CC-06": "Gateway connection success", "CC-07": "External connection volume", "CC-08": "Monitor data freshness",
+  "CN-01": "Connectors online vs expected", "CN-02": "Connector registration in Citrix Cloud", "CN-03": "Outbound connectivity test", "CN-05": "Citrix service health",
+  "VDA-01": "Registered % of usable VDAs", "VDA-03": "Machine fault state", "VDA-04": "Slots available vs in use", "VDA-06": "CPU %", "VDA-07": "Memory %", "VDA-10": "Load Index", "VDA-12": "Power and scale events", "VDA-13": "Reboot and provisioning failures", "VDA-16": "Hours to capacity exhaustion",
+  "FAS-01": "FAS service availability", "FAS-02": "Certificate issuance success", "FAS-05": "Certificate expiry", "FAS-07": "Redundancy and failover",
+  "APV-02": "Publishing server availability", "APV-03": "Package publication", "APV-04": "Streaming and mounting failures",
+  "AWS-01": "EC2 health", "AWS-02": "Availability Zone status", "AWS-04": "EBS volume health", "AWS-07": "Subnet free IPs",
+  "UX-04": "Logon success rate", "UX-05": "Average and P90 logon duration", "UX-06": "Logon phase breakdown", "UX-11": "Connection success by path", "UX-12": "Failed authentication attempts", "SYN-05": "External path synthetic"
+};
+
+function renderTrends() {
+  const L = LABELS;
+  const sUsers = [{ name: "Sessions", short: "Sessions", values: D.sessions, color: "var(--s1)" }, { name: "Users", short: "Users", values: D.users, color: "var(--s3)" }, { name: "Sessions, same hour last week", short: "Last wk", values: D.lastWeek, color: "var(--muted)", dash: true, width: 1.5 }];
+  card($("#c-users"), { title: "Sessions and concurrent users", sub: "Last 24 hours, compared with the same hour last week",
+    legend: [{ k: "Sessions", c: "var(--s1)" }, { k: "Users", c: "var(--s3)" }, { k: "Sessions last week", c: "var(--muted)", dash: true }],
+    draw: h => lineChart(h, { labels: L, series: sUsers, yFmt: v => fmtInt(v), area: true }), table: seriesTable(L, sUsers, fmtInt) });
+
+  const sLog = [{ name: "P90", values: D.logonP90, color: "var(--s2)" }, { name: "Average", short: "Avg", values: D.logonAvg, color: "var(--s1)" }];
+  card($("#c-logon"), { title: "Logon duration", sub: "Seconds from click to session ready. Dashed line = 30 s target for the average.",
+    legend: [{ k: "Average", c: "var(--s1)" }, { k: "P90", c: "var(--s2)" }],
+    draw: h => lineChart(h, { labels: L, series: sLog, yFmt: (v, x) => x ? fmt1(v) + " s" : Math.round(v) + " s", refs: [{ y: 30, label: "Target 30 s" }] }), table: seriesTable(L, sLog, v => fmt1(v)) });
+
+  const sFail = [{ name: "Logon failure rate", values: D.failPct, color: "var(--s8)" }];
+  card($("#c-fail"), { title: "Logon failure rate", sub: "Share of logon attempts that failed each hour. Dashed line = 1% warning threshold.",
+    draw: h => { const yMax = Math.max(2, Math.ceil(Math.max(...D.failPct) + 0.5)); barChart(h, { labels: L, series: sFail, yFmt: (v, x) => x ? fmt1(v) + "%" : v + "%", yMax }); addRef(h, 1, yMax); },
+    table: seriesTable(L, sFail, v => fmt1(v) + "%") });
+
+  const PC = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)", "var(--s7)"];
+  const sPh = D.phaseNames.map((nm, k) => ({ name: nm, values: D.phases[k], color: PC[k] }));
+  card($("#c-phases"), { title: "Where logon time goes", sub: "Average seconds per logon phase, stacked. Hover a bar for the breakdown.",
+    legend: sPh.map(s => ({ k: s.name, c: s.color, sq: true })),
+    draw: h => barChart(h, { labels: L, series: sPh, yFmt: (v, x) => x ? fmt1(v) + " s" : v + " s", total: true }), table: seriesTable(L, sPh, fmt1) });
+
+  const sLa = [{ name: "Successful launches", values: D.launchOk, color: "var(--s1)" }, { name: "Failed launches", values: D.launchFail, color: "var(--s8)" }];
+  card($("#c-launch"), { title: "Application launches", sub: "Per hour. Failed launches stack on top of successful ones.",
+    legend: [{ k: "Successful", c: "var(--s1)", sq: true }, { k: "Failed", c: "var(--s8)", sq: true }],
+    draw: h => barChart(h, { labels: L, series: sLa, yFmt: v => fmtInt(v), total: true }), table: seriesTable(L, sLa, fmtInt) });
+
+  const sPath = [{ name: "Internal", values: D.internal, color: "var(--s1)" }, { name: "External", values: D.external, color: "var(--s2)" }];
+  const pMin = KEY === "red" ? 0 : 95;
+  card($("#c-path"), { title: "Connection success: internal vs external", sub: "Both paths go through the Gateway service. Dashed line = 98% target.",
+    legend: [{ k: "Internal", c: "var(--s1)" }, { k: "External", c: "var(--s2)" }],
+    draw: h => lineChart(h, { labels: L, series: sPath, yMin: pMin, yMax: 100, yFmt: (v, x) => x ? fmt1(v) + "%" : v + "%", refs: [{ y: 98, label: "Target 98%" }], zero: false }), table: seriesTable(L, sPath, v => fmt1(v) + "%") });
+
+  const vh = $("#c-vda");
+  vh.innerHTML = [["CPU P95", "%"], ["Memory P95", "%"], ["Lowest disk free", "%"], ["Load Index P95", ""]].map((t, i) => `<div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:2px"><b style="font-weight:600">${t[0]}</b><span class="num" id="vda-now-${i}"></span></div><div class="chart" id="vda-${i}"></div></div>`).join("");
+  const VS = [
+    { v: D.cpuP95, ref: 75, f: v => Math.round(v) + "%", max: 100, worse: "high" },
+    { v: D.memP95, ref: 80, f: v => Math.round(v) + "%", max: 100, worse: "high" },
+    { v: D.diskMin, ref: 20, f: v => Math.round(v) + "%", max: 50, worse: "low" },
+    { v: D.load95, ref: 7000, f: v => fmtInt(v), max: 10000, worse: "high" }
+  ];
+  VS.forEach((s, i) => {
+    const last = s.v[23], st = s.worse === "high" ? (last > s.ref ? "warn" : "good") : (last < s.ref ? "warn" : "good");
+    $("#vda-now-" + i).innerHTML = `${s.f(last)} ${st === "warn" ? pill("warn", "Above threshold") : ""}`;
+    lineChart($("#vda-" + i), { labels: L, series: [{ name: ["CPU P95", "Memory P95", "Lowest disk free", "Load Index P95"][i], values: s.v, color: "var(--s1)" }], yMin: 0, yMax: s.max, yFmt: s.f, refs: [{ y: s.ref, label: "Warning" }], height: 130, endLabels: false, area: true, ticks: 2 });
+  });
+
+  const ch = $("#c-conn");
+  ch.innerHTML = `<div class="card-h"><div><h2>Cloud Connector health</h2><div class="sub">Each cell is one hour. At least 2 healthy connectors are required per resource location.</div></div></div>
+    <div class="legend"><span><i class="sq" style="--c:var(--good)"></i>Healthy</span><span><i class="sq" style="--c:var(--warn)"></i>Degraded (service restart, high CPU)</span><span><i class="sq" style="--c:var(--crit)"></i>Offline</span></div>
+    <div class="tscroll"><table><tbody>${D.connectors.map(c => `<tr><td style="white-space:nowrap;width:1%">${esc(c.name)}</td><td style="min-width:300px"><div class="strip">${c.cells.map((s, h) => `<i class="s-${s}" data-h="${h}" data-s="${s}" data-n="${esc(c.name)}"></i>`).join("")}</div></td></tr>`).join("")}
+    <tr><td></td><td><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>${L[0]}</span><span>${L[12]}</span><span>${L[23]} UTC</span></div></td></tr></tbody></table></div>`;
+  ch.querySelectorAll(".strip i").forEach(c => { c.addEventListener("pointermove", e => showTip(e, LABELS[+c.dataset.h] + " UTC", [{ k: c.dataset.n.split(" · ")[0], v: c.dataset.s === "warn" ? "Degraded: service restart after update" : WORD[c.dataset.s] }])); c.addEventListener("pointerleave", hideTip); });
+}
+function addRef(host, y, yMax) {
+  const svg = host.querySelector("svg"); if (!svg) return;
+  const H = +svg.getAttribute("height"), W = +svg.getAttribute("width"), ih = H - 34, yy = 10 + ih - y / yMax * ih;
+  el("line", { x1: 44, x2: W - 10, y1: yy, y2: yy, style: "stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 4;opacity:.8;pointer-events:none" }, svg);
+  const t = el("text", { x: 50, y: yy - 5, style: "fill:var(--ink-2);font-size:11px;pointer-events:none" }, svg); t.textContent = "Warning 1%";
+}
+
+function renderApps() {
+  const A = appsFor(KEY);
+  $("#apps").innerHTML = `<thead><tr><th>Application</th><th>Delivery group</th><th class="r">Users</th><th class="r">Launches</th><th class="r">Avg launch</th><th class="r">P90 launch</th><th class="r">Launch success</th><th>Status</th></tr></thead><tbody>` +
+    A.map(a => `<tr><td><b style="font-weight:600">${esc(a.name)}</b>${a.appv ? ' <span class="owner" title="Delivered as an App-V package">App-V</span>' : ""}</td><td style="color:var(--ink-2)">${esc(a.dg)}</td><td class="r">${fmtInt(a.users)}</td><td class="r">${fmtInt(a.launches)}</td><td class="r">${fmtSec(a.avg)}</td><td class="r">${fmtSec(a.p90)}</td><td class="r">${fmtPct(100 - a.fail)}</td><td>${pill(a.s)}</td></tr>`).join("") + "</tbody>";
+  const rank = (arr, key, fmt, max, colorFn) => arr.map(a => `<div style="display:grid;grid-template-columns:minmax(110px,1fr) 2fr 64px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">
+      <span>${esc(a.name)}</span><div class="bar"><b style="width:${Math.max(2, 100 * a[key] / max)}%;--c:${colorFn(a)}"></b></div><span class="num" style="text-align:right">${fmt(a[key])}</span></div>`).join("");
+  const byFail = A.filter(a => a.launches >= 20).sort((a, b) => b.fail - a.fail).slice(0, 6);
+  $("#appfail").innerHTML = rank(byFail, "fail", v => fmt1(v) + "%", Math.max(3, byFail[0].fail), a => a.s === "good" ? "var(--s1)" : `var(--${a.s})`) + `<p class="note" style="margin-top:10px">Bars turn amber or red when an app passes the 1% or 3% failure threshold.</p>`;
+  const bySlow = A.slice().sort((a, b) => b.p90 - a.p90).slice(0, 6);
+  $("#appslow").innerHTML = rank(bySlow, "p90", v => Math.round(v) + " s", Math.max(70, bySlow[0].p90), () => "var(--s1)") + `<p class="note" style="margin-top:10px">App-V packages stream on first launch, which adds time. Target P90 is under 40 s.</p>`;
+
+  const G = dgsFor(KEY);
+  $("#dgs").innerHTML = `<thead><tr><th>Delivery group</th><th>Status</th><th class="r">Users</th><th class="r">Avg logon</th><th class="r">P90 logon</th><th class="r">Logon failures</th><th class="r">Load Index P95</th><th class="r">Unregistered VDAs</th><th class="r">Capacity used</th></tr></thead><tbody>` +
+    G.map(g => `<tr><td><b style="font-weight:600">${esc(g.name)}</b></td><td>${pill(g.s)}</td><td class="r">${fmtInt(g.users)}</td><td class="r">${fmtSec(g.avg)}</td><td class="r">${fmtSec(g.p90)}</td><td class="r">${fmtPct(g.fail)}</td><td class="r">${fmtInt(g.load)}</td><td class="r">${g.unreg}</td><td class="r">${g.cap}%</td></tr>`).join("") + "</tbody>";
+}
+
+function renderCapacity() {
+  const sc = D.sc;
+  const S = [{ name: "Actual sessions", short: "Now", values: D.fcActual, color: "var(--s1)" }, { name: "Forecast", short: "Peak", values: D.fcForecast, color: "var(--s1)", dash: true }];
+  const vline = D.exhaustIdx != null ? { i: D.exhaustIdx, label: `Full ~${D.fcLabels[D.exhaustIdx]}`, tone: D.hoursToExhaust < 4 ? "--crit" : "--warn" } : null;
+  card($("#c-forecast"), { title: "Capacity forecast, next 24 hours", sub: "Sessions forecast from the same weekday's pattern, scaled by how today compares so far. Shaded band = likely range.",
+    legend: [{ k: "Actual", c: "var(--s1)" }, { k: "Forecast", c: "var(--s1)", dash: true }, { k: "Capacity lines", c: "var(--ink-2)", dash: true }],
+    draw: h => lineChart(h, { labels: D.fcLabels, series: S, band: { lo: D.fcLo, hi: D.fcHi, color: "var(--s1)" }, yFmt: v => fmtInt(v), height: 300,
+      refs: [{ y: sc.slotsNow, label: `Slots now ${fmtInt(sc.slotsNow)}` }, { y: sc.slotsMax, label: `At Autoscale max ${fmtInt(sc.slotsMax)}` }], vline, endLabels: false }),
+    table: () => ({ cols: ["Hour (UTC)", "Actual", "Forecast", "Low", "High"], rows: D.fcLabels.map((l, i) => [l, D.fcActual[i] == null ? "–" : fmtInt(D.fcActual[i]), D.fcForecast[i] == null ? "–" : fmtInt(D.fcForecast[i]), D.fcLo[i] == null ? "–" : fmtInt(D.fcLo[i]), D.fcHi[i] == null ? "–" : fmtInt(D.fcHi[i])]) }) });
+
+  const capS = rag(sc.capacity, TH.capacity);
+  $("#capnums").innerHTML = [
+    ["Utilization now", Math.round(sc.capacity) + "%", capS], ["Free slots now", fmtInt(sc.slotsNow - sc.sessionsNow)],
+    ["Headroom at Autoscale max", fmtInt(sc.slotsMax - sc.sessionsNow)], ["Forecast peak", `${fmtInt(D.peak)} at ${D.peakTime}`],
+    ["Projected full", D.hoursToExhaust ? `in ~${D.hoursToExhaust} h` : "Not within 24 h", D.hoursToExhaust ? (D.hoursToExhaust < 4 ? "crit" : "warn") : "good"]
+  ].map(([k, v, s]) => `<div style="${s ? `border-left-color:var(--${s})` : ""}"><div class="k">${esc(k)}</div><div class="v num">${esc(v)}</div></div>`).join("");
+  const need = Math.ceil((D.peak - 0.9 * sc.slotsMax) / 20);
+  const rec = D.hoursToExhaust ? { s: D.hoursToExhaust < 4 ? "crit" : "warn", t: `Raise the Autoscale maximum by about ${need} VDAs before ${D.fcLabels[D.exhaustIdx - 2]} UTC`, d: `The forecast peak of ${fmtInt(D.peak)} sessions passes 95% of the ${fmtInt(sc.slotsMax)} slots available at the current Autoscale maximum. Finance-Apps is closest to its limit.` }
+    : D.peak < 0.75 * sc.slotsMax ? { s: "good", t: "No scaling action needed", d: `The forecast peak uses ${Math.round(100 * D.peak / sc.slotsMax)}% of capacity at the Autoscale maximum. Review the Autoscale minimums if this holds for a week, to save cost.` }
+    : { s: "good", t: "No scaling action needed", d: "The forecast peak stays below 95% of capacity at the Autoscale maximum." };
+  $("#caprec").innerHTML = `<div class="rec s-${rec.s}">${ICON[rec.s]}<div><b>${esc(rec.t)}</b><div style="color:var(--ink-2);font-size:13px;margin-top:3px">${esc(rec.d)}</div></div></div>`;
+  $("#capdg").innerHTML = dgsFor(KEY).map(g => { const s = rag(g.cap, TH.capacity); return `<div style="display:grid;grid-template-columns:minmax(120px,1fr) 2fr 48px;gap:10px;align-items:center;padding:6px 0">
+    <span>${esc(g.name)}</span><div class="bar"><b style="width:${g.cap}%;--c:${s === "good" ? "var(--s1)" : `var(--${s})`}"></b></div><span class="num" style="text-align:right">${g.cap}%</span></div>`; }).join("") + `<p class="note" style="margin-top:8px">Bars turn amber above 75% and red above 90%.</p>`;
+}
+
+function renderView() {
+  document.querySelectorAll("main[data-v]").forEach(m => m.hidden = m.dataset.v !== VIEW);
+  document.querySelectorAll("nav.tabs a").forEach(a => { if (a.dataset.view === VIEW) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  renderBanner();
+  if (VIEW === "overview") renderOverview();
+  if (VIEW === "trends") renderTrends();
+  if (VIEW === "applications") renderApps();
+  if (VIEW === "capacity") renderCapacity();
+}
+
+function setScenario(k) {
+  KEY = k; D = build(k);
+  document.querySelectorAll("#scenario button").forEach(b => b.setAttribute("aria-pressed", b.dataset.sc === k));
+  try { localStorage.setItem("ctx-dash-scenario", k); } catch (e) {}
+  hideTip(); renderView();
+}
+document.querySelectorAll("#scenario button").forEach(b => b.addEventListener("click", () => setScenario(b.dataset.sc)));
+
+function route() { const h = location.hash.slice(1); VIEW = ["overview", "trends", "applications", "capacity"].includes(h) ? h : "overview"; hideTip(); renderView(); window.scrollTo(0, 0); }
+window.addEventListener("hashchange", route);
+let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (VIEW !== "overview") renderView(); }, 150); });
+
+let saved = "yellow"; try { saved = localStorage.getItem("ctx-dash-scenario") || "yellow"; } catch (e) {}
+KEY = SCEN[saved] ? saved : "yellow"; D = build(KEY);
+document.querySelectorAll("#scenario button").forEach(b => b.setAttribute("aria-pressed", b.dataset.sc === KEY));
+route();
+})();
+</script>
+</body>
+</html>

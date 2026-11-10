@@ -1,0 +1,6 @@
+{
+  "_comment": "Alerts whose Component/Scope match an active window are recorded but not notified. Times are UTC.",
+  "Windows": [
+    { "Name": "Nightly VDA reboot", "Component": "VDAFleet", "Scope": "*", "Cron": "daily", "StartUtc": "06:00", "EndUtc": "07:30" }
+  ]
+}

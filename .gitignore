@@ -1,0 +1,4 @@
+config/settings.json
+config/app-process-map.json
+logs/
+*.log
